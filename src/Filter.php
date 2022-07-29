@@ -7,15 +7,17 @@ use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\Config;
 use VDVT\Filter\Constants\References;
+use VDVT\Support\Traits\UserTimezoneTrait;
 
 class Filter
 {
-    use \VDVT\Support\Traits\UserTimezoneTrait;
+    use UserTimezoneTrait;
 
     /**
-     * HelperMigrate draw data search
+     * @param array $data
+     * @param array $conditions
+     * @param null $builder
      * @return array
-     * @author  TrinhLe
      */
     public function filtersSearchHelper(array $data, array $conditions, &$builder = null): array
     {
@@ -24,56 +26,38 @@ class Filter
                 $searchKeyword = array_get($data, $keyword);
                 $column = array_get($config, 'column');
 
-                if ($callbackFilterInput = array_get($config, 'callbackFilterInput')) {
-                    $searchKeyword = $callbackFilterInput($searchKeyword);
-                }
+                $this->applyFilter($searchKeyword, array_get($config, 'applyBeforeFilter', []));
 
                 if (isset($searchKeyword) && $searchKeyword !== '') {
-                    /**
-                     * Support Format DataType
-                     *
-                     * @author TrinhLe(trinh.le@bigin.vn)
-                     */
-                    if ($inputType = array_get($config, 'inputType')) {
-                        switch ($inputType) {
-                            case References::DATA_TYPE_DATE_TIME_ZONE:
-                                $searchKeyword = Carbon::createFromTimestamp(
-                                    strtotime($searchKeyword),
-                                    $this->getDefaultTimezone()
-                                )->setTimezone(Config::get('app.timezone', 'UTC'));
+                    switch (array_get($config, 'inputType')) {
+                        case References::DATA_TYPE_DATE_TIME_ZONE:
+                            $searchKeyword = Carbon::createFromTimestamp(
+                                strtotime($searchKeyword),
+                                $this->getDefaultTimezone()
+                            )->setTimezone(Config::get('app.timezone', 'UTC'));
 
-                                if (array_get($config, 'is_end')) {
-                                    $searchKeyword->addHours(24);
-                                }
-                                break;
-                            case References::DATA_TYPE_INTEGER:
-                                $searchKeyword = (int)$searchKeyword;
-                                break;
-                            case References::DATA_TYPE_BOOLEAN:
-                                $searchKeyword = filter_var($searchKeyword, FILTER_VALIDATE_BOOLEAN);
-                                break;
-                        }
+                            if (array_get($config, 'is_end')) {
+                                $searchKeyword->addHours(24);
+                            }
+                            break;
+                        case References::DATA_TYPE_INTEGER:
+                            $searchKeyword = (int)$searchKeyword;
+                            break;
+                        case References::DATA_TYPE_BOOLEAN:
+                            $searchKeyword = filter_var($searchKeyword, FILTER_VALIDATE_BOOLEAN);
+                            break;
+                    }
+                    $this->applyFilter($searchKeyword, array_get($config, 'applyAfterFilter', []));
+
+                    if (
+                        is_null($searchKeyword) ||
+                        $searchKeyword === ''
+                    ) {
+                        return false;
                     }
 
-                    if ($callbackType = array_get($config, 'callbackType')) {
-                        $searchKeyword = $callbackType($searchKeyword);
-                        if (
-                            is_null($searchKeyword) ||
-                            $searchKeyword === ''
-                        ) {
-                            return;
-                        }
-                    }
+                    $this->applyFilter($searchKeyword, array_get($config, 'callUserFunc', []), true);
 
-                    if (array_get($config, 'isStrToLower')) {
-                        $searchKeyword = strtolower($searchKeyword);
-                    }
-
-                    /**
-                     * Support Operator
-                     *
-                     * @author TrinhLe(trinh.le@bigin.vn)
-                     */
                     $operator = array_get($config, 'operator', '=');
 
                     switch ($operator) {
@@ -83,7 +67,7 @@ class Filter
                         case References::FILTER_OPERATOR_IN:
                             if ($builder instanceof EloquentBuilder || $builder instanceof QueryBuilder) {
                                 $builder->whereIn($column, is_array($searchKeyword) ? $searchKeyword : []);
-                                return;
+                                return false;
                             }
                     }
 
@@ -96,13 +80,30 @@ class Filter
                                     }
                                 });
                         }
-                        return;
+                        return false;
                     }
 
                     return [$column, $operator, $searchKeyword];
                 }
             }, $conditions, array_keys($conditions))
         );
+    }
+
+    /**
+     * @param $searchKeyword
+     * @param array $filters
+     * @param bool $isCallable
+     */
+    public function applyFilter(&$searchKeyword, array $filters = [], bool $isCallable = false)
+    {
+        foreach ($filters as $instance) {
+            if ($isCallable) {
+                $searchKeyword = call_user_func($instance, $searchKeyword);
+            } else {
+                $instance = new $instance($searchKeyword);
+                $searchKeyword = $instance instanceof ICallbackFilter ? $instance->getValue() : $instance->__toString();
+            }
+        }
     }
 
     /**
