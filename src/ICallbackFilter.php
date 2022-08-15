@@ -1,6 +1,6 @@
 <?php
 
-namespace VDVT\Filter;
+namespace BiginFilter;
 
 interface ICallbackFilter
 {

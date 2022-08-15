@@ -1,6 +1,6 @@
 <?php
 
-namespace VDVT\Filter;
+namespace BiginFilter;
 
 use Illuminate\Support\ServiceProvider;
 

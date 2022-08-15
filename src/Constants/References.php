@@ -1,6 +1,6 @@
 <?php
 
-namespace VDVT\Filter\Constants;
+namespace BiginFilter\Constants;
 
 interface References
 {

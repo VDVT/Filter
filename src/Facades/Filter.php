@@ -1,6 +1,6 @@
 <?php
 
-namespace VDVT\Filter\Facades;
+namespace BiginFilter\Facades;
 
 use Illuminate\Support\Facades\Facade;
 
